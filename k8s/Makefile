@@ -69,15 +69,10 @@ endif
 
 fetch-sysbox-ce-bins:
 	@echo "Fetching Sysbox CE binaries ..."
-	$(eval TMPDIR := $(shell mktemp -d))
-	@echo "TMPDIR = $(TMPDIR)"
-	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_CE_VER_SEMVER)/sysbox-ce/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb -P $(TMPDIR)
-	mkdir -p $(TMPDIR)/sysbox-ce-generic
-	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
 	mkdir -p bin/sysbox-ce/generic
 	rm -rf bin/sysbox-ce/generic/*
-	cp $(TMPDIR)/sysbox-ce-generic/usr/bin/sysbox-* bin/sysbox-ce/generic/.
-	rm -rf $(TMPDIR)
+	cp ../../build/ubuntu_24.04/amd64/* bin/sysbox-ce/generic/.
+	ls -alh bin/sysbox-ce/generic
 
 #
 # CRI-O artifacts (only built if not already present at ./bin/crio)
