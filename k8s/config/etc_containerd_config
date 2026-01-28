@@ -1,0 +1,7 @@
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.sysbox-runc]
+  runtime_type = "io.containerd.runc.v2"
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.sysbox-runc.options]
+  SystemdCgroup = false
+  BinaryName="/usr/bin/sysbox-runc"

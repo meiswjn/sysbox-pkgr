@@ -1116,6 +1116,35 @@ function delete_sysbox_pods() {
 	set -e
 }
 
+function configure_containerd() {
+	# Configure containerd to use sysbox-runc as runtime for sysbox containers.
+	echo "Configuring containerd to support sysbox-runc Runtime Handler ..."
+	if [ ! -f ${host_etc}/containerd/config.toml.bak ]; then
+		cp ${host_etc}/containerd/config.toml ${host_etc}/containerd/config.toml.bak
+	fi
+	if ! grep -q " " ${host_etc}/containerd/config.toml; then
+		echo "Adding sysbox-runc runtime handler to containerd config ..."
+		cat ${sysbox_artifacts}/config/etc_containerd_config >> ${host_etc}/containerd/config.toml
+	else
+		echo "Sysbox-runc runtime handler already present in containerd config; skipping addition."
+	fi
+}
+
+function restore_containerd() {
+	# Restore containerd config file if backup exists.
+	if [ -f ${host_etc}/containerd/config.toml.bak ]; then
+		echo "Restoring containerd config ..."
+		mv ${host_etc}/containerd/config.toml.bak ${host_etc}/containerd/config.toml
+	else 
+		echo "No containerd config backup found; skipping restore."
+	fi
+}
+
+function restart_kubelet() {
+	echo "Restarting Kubelet ..."
+	systemctl restart kubelet
+}
+
 #
 # Main Function
 #
@@ -1277,14 +1306,12 @@ install-no-crio)
 			install_sysbox
 			echo "yes" >${host_var_lib_sysbox_deploy_k8s}/sysbox_installed
 			echo "$os_kernel_release" >${host_var_lib_sysbox_deploy_k8s}/os_kernel_release
+			
+			# Kubelet config
+			configure_containerd
+			restart_kubelet
 		fi
 
-		# Kubelet config service cleanup
-		if [ -f ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured ]; then
-			remove_kubelet_config_service
-			rm -f ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured
-			echo "Kubelet reconfig completed."
-		fi
 
 		# Remove all the sysbox pods in the node to ensure that the newly installed/updated
 		# sysbox binaries are used. No action will be taken if this daemon-set is being updated
@@ -1348,6 +1375,9 @@ install-no-crio)
 			crio_restart_pending=false
 			rm -f ${host_var_lib_sysbox_deploy_k8s}/crio_installed
 			rm_label_from_node "crio-runtime"
+		else
+			restore_containerd
+			restart_kubelet
 		fi
 
 		rm -rf ${host_var_lib_sysbox_deploy_k8s}
