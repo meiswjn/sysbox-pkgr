@@ -1290,7 +1290,7 @@ function main() {
 		fi
 		;;
 
-install-no-crio)
+	install-no-crio)
 		mkdir -p ${host_var_lib_sysbox_deploy_k8s}
 		install_precheck
 
