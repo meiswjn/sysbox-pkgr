@@ -1122,11 +1122,12 @@ function configure_containerd() {
 	if [ ! -f ${host_etc}/containerd/config.toml.bak ]; then
 		cp ${host_etc}/containerd/config.toml ${host_etc}/containerd/config.toml.bak
 	fi
-	if ! grep -q " " ${host_etc}/containerd/config.toml; then
+	if ! grep -q "sysbox-runc" ${host_etc}/containerd/config.toml; then
 		echo "Adding sysbox-runc runtime handler to containerd config ..."
 		cat ${sysbox_artifacts}/config/etc_containerd_config >> ${host_etc}/containerd/config.toml
 	else
-		echo "Sysbox-runc runtime handler already present in containerd config; skipping addition."
+		echo "Sysbox-runc runtime handler already present in containerd config; skipping addition, here is the current config:"
+		cat ${host_etc}/containerd/config.toml
 	fi
 }
 
