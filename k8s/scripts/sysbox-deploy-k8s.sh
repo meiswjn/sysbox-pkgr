@@ -1261,6 +1261,51 @@ function main() {
 		fi
 		;;
 
+install-no-crio)
+		mkdir -p ${host_var_lib_sysbox_deploy_k8s}
+		install_precheck
+
+		# Prevent new pods being scheduled till sysbox installation/update is completed.
+		add_taint_to_node "${k8s_taints}"
+		do_crio_install="false"
+
+		# Install or update Sysbox
+		if [[ "$do_sysbox_install" == "true" ]] ||
+			[[ "$do_sysbox_update" == "true" ]]; then
+			add_label_to_node "sysbox-runtime=installing"
+			install_sysbox_deps
+			install_sysbox
+			echo "yes" >${host_var_lib_sysbox_deploy_k8s}/sysbox_installed
+			echo "$os_kernel_release" >${host_var_lib_sysbox_deploy_k8s}/os_kernel_release
+		fi
+
+		# Kubelet config service cleanup
+		if [ -f ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured ]; then
+			remove_kubelet_config_service
+			rm -f ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured
+			echo "Kubelet reconfig completed."
+		fi
+
+		# Remove all the sysbox pods in the node to ensure that the newly installed/updated
+		# sysbox binaries are used. No action will be taken if this daemon-set is being updated
+		# with no changes to the sysbox runtime or any of its dependencies.
+		if [[ "$do_sysbox_install" == "true" ]] ||
+			[[ "$do_sysbox_update" == "true" ]] ||
+			[[ "$sysbox_install_in_progress" == "true" ]]; then
+			delete_sysbox_pods
+		fi
+
+		add_label_to_node "sysbox-runtime=running"
+		rm_taint_from_node "${k8s_taints}"
+
+		if [[ "$do_sysbox_install" == "true" ]] || [[ "$sysbox_install_in_progress" == "true" ]]; then
+			echo "The k8s runtime on this node is now Sysbox WITHOUT CRI-O."
+			echo "$sysbox_edition installation completed (version $sysbox_version)."
+		elif [[ "$do_sysbox_update" == "true" ]]; then
+			echo "$sysbox_edition update completed (version $sysbox_version)."
+		fi
+		;;
+
 	cleanup)
 		mkdir -p ${host_var_lib_sysbox_deploy_k8s}
 
