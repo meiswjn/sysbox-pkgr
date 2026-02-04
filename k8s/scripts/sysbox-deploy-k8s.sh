@@ -1142,12 +1142,30 @@ function configure_containerd() {
 		sysbox_systemd_cgroup="true"
 	fi
 
+	# Determine the host path where sysbox-runc is installed.
+	# Default is /usr/bin, but Flatcar uses /opt/bin.
+	local sysbox_runc_bin="/usr/bin/sysbox-runc"
+	if [[ "${host_bin}" == "/mnt/host/opt/bin" ]]; then
+		sysbox_runc_bin="/opt/bin/sysbox-runc"
+	fi
+
 	if [ ! -f ${host_etc}/containerd/config.toml.bak ]; then
 		cp "${cfg_file}" ${host_etc}/containerd/config.toml.bak
 	fi
 	if ! grep -q "sysbox-runc" "${cfg_file}"; then
 		echo "Adding sysbox-runc runtime handler to containerd config ..."
-		sed -E "s/^(\s*SystemdCgroup\s*=\s*).*/\1${sysbox_systemd_cgroup}/" "${cfg_snippet}" >> "${cfg_file}"
+		local tmp_snip
+		tmp_snip="$(mktemp)"
+		sed -E "s/^(\s*SystemdCgroup\s*=\s*).*/\1${sysbox_systemd_cgroup}/; s#^(\s*BinaryName\s*=\s*).*#\1\"${sysbox_runc_bin}\"#" \
+			"${cfg_snippet}" > "${tmp_snip}"
+
+		# If the snippet lacks BinaryName for any reason, add it (must be under the options table).
+		if ! grep -qE '^\s*BinaryName\s*=' "${tmp_snip}"; then
+			echo "  BinaryName=\"${sysbox_runc_bin}\"" >> "${tmp_snip}"
+		fi
+
+		cat "${tmp_snip}" >> "${cfg_file}"
+		rm -f "${tmp_snip}"
 	else
 		echo "Sysbox-runc runtime handler already present in containerd config; skipping addition, here is the current config:"
 		cat "${cfg_file}"
