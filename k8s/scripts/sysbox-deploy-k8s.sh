@@ -1119,15 +1119,31 @@ function delete_sysbox_pods() {
 function configure_containerd() {
 	# Configure containerd to use sysbox-runc as runtime for sysbox containers.
 	echo "Configuring containerd to support sysbox-runc Runtime Handler ..."
-	if [ ! -f ${host_etc}/containerd/config.toml.bak ]; then
-		cp ${host_etc}/containerd/config.toml ${host_etc}/containerd/config.toml.bak
+
+	local cfg_file="${host_etc}/containerd/config.toml"
+	local cfg_snippet="${sysbox_artifacts}/config/etc_containerd_config"
+
+	if [ ! -f "${cfg_file}" ]; then
+		die "containerd config not found at ${cfg_file}; cannot configure sysbox runtime handler"
 	fi
-	if ! grep -q "sysbox-runc" ${host_etc}/containerd/config.toml; then
+
+	# Pick the snippet matching the host containerd config format.
+	if grep -q "io.containerd.grpc.v1.cri" "${cfg_file}"; then
+		cfg_snippet="${sysbox_artifacts}/config/etc_containerd_config_grpc_v1_cri"
+	fi
+	if [ ! -f "${cfg_snippet}" ]; then
+		die "missing containerd config snippet at ${cfg_snippet} (image packaging issue)"
+	fi
+
+	if [ ! -f ${host_etc}/containerd/config.toml.bak ]; then
+		cp "${cfg_file}" ${host_etc}/containerd/config.toml.bak
+	fi
+	if ! grep -q "sysbox-runc" "${cfg_file}"; then
 		echo "Adding sysbox-runc runtime handler to containerd config ..."
-		cat ${sysbox_artifacts}/config/etc_containerd_config >> ${host_etc}/containerd/config.toml
+		cat "${cfg_snippet}" >> "${cfg_file}"
 	else
 		echo "Sysbox-runc runtime handler already present in containerd config; skipping addition, here is the current config:"
-		cat ${host_etc}/containerd/config.toml
+		cat "${cfg_file}"
 	fi
 }
 
@@ -1139,6 +1155,11 @@ function restore_containerd() {
 	else 
 		echo "No containerd config backup found; skipping restore."
 	fi
+}
+
+function restart_containerd() {
+	echo "Restarting containerd ..."
+	systemctl restart containerd
 }
 
 function restart_kubelet() {
@@ -1310,6 +1331,7 @@ function main() {
 			
 			# Kubelet config
 			configure_containerd
+			restart_containerd
 			restart_kubelet
 		fi
 
@@ -1378,6 +1400,7 @@ function main() {
 			rm_label_from_node "crio-runtime"
 		else
 			restore_containerd
+			restart_containerd
 			restart_kubelet
 		fi
 

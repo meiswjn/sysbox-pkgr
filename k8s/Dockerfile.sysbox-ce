@@ -76,6 +76,10 @@ COPY scripts/sysbox-deploy-k8s.sh /opt/sysbox/scripts/sysbox-deploy-k8s.sh
 COPY scripts/sysbox-installer-helper.sh /opt/sysbox/scripts/sysbox-installer-helper.sh
 COPY scripts/sysbox-removal-helper.sh /opt/sysbox/scripts/sysbox-removal-helper.sh
 
+# Containerd runtime handler config snippets (used by sysbox-deploy-k8s 'install-no-crio')
+COPY config/etc_containerd_config /opt/sysbox/config/etc_containerd_config
+COPY config/etc_containerd_config_grpc_v1_cri /opt/sysbox/config/etc_containerd_config_grpc_v1_cri
+
 #
 # Load CRI-O installation artifacts
 #

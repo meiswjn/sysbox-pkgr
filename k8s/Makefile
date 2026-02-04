@@ -14,6 +14,10 @@ SHELL := /bin/bash
 
 SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
 
+# List of sysbox binaries to overwrite from local source builds after extracting
+# the released sysbox-ce .deb. Default preserves existing behavior.
+OVERWRITE_SYSBOX_BINS_FROM_SOURCE ?= sysbox-runc
+
 # Obtain the version to build from the Sysbox repo itself. If a full version string
 # is not found in the corresponding VERSION file, append a dummy revision/patch ("0")
 # to match the name of the sysbox's deb image to download.
@@ -81,7 +85,21 @@ fetch-sysbox-ce-bins:
 	@echo "Before Overwrite"
 	sha1sum bin/sysbox-ce/generic/*
 	ls -alh bin/sysbox-ce/generic/
-	cp ../../sysbox-runc/build/amd64/sysbox-runc bin/sysbox-ce/generic/sysbox-runc
+	@for bin in $(OVERWRITE_SYSBOX_BINS_FROM_SOURCE); do \
+		case $$bin in \
+			sysbox-runc) src="../../sysbox-runc/build/$(SYS_ARCH)/sysbox-runc" ;; \
+			sysbox-mgr)  src="../../sysbox-mgr/build/$(SYS_ARCH)/sysbox-mgr" ;; \
+			sysbox-fs)   src="../../sysbox-fs/build/$(SYS_ARCH)/sysbox-fs" ;; \
+			*) echo "ERROR: unknown sysbox binary '$$bin' in OVERWRITE_SYSBOX_BINS_FROM_SOURCE"; exit 1 ;; \
+		esac; \
+		if [ ! -f "$$src" ]; then \
+			echo "ERROR: missing local source-built binary: $$src"; \
+			echo "Hint: build it first (e.g., from repo root: make sysbox)"; \
+			exit 1; \
+		fi; \
+		echo "Overwriting $$bin with $$src"; \
+		cp "$$src" "bin/sysbox-ce/generic/$$bin"; \
+	done
 	@echo "After Overwrite"
 	sha1sum bin/sysbox-ce/generic/*
 	ls -alh bin/sysbox-ce/generic/
