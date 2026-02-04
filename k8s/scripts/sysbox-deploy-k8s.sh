@@ -1149,6 +1149,63 @@ function configure_containerd() {
 		sysbox_runc_bin="/opt/bin/sysbox-runc"
 	fi
 
+	ensure_sysbox_runc_runtime_options() {
+		local file="$1"
+
+		# If the sysbox-runc options table is missing, add it.
+		if ! grep -qE '^\[.*containerd\.runtimes\.sysbox-runc\.options\]$' "${file}"; then
+			local runtime_hdr
+			runtime_hdr="$(grep -E '^\[.*containerd\.runtimes\.sysbox-runc\]$' "${file}" | head -1)"
+			if [ -n "${runtime_hdr}" ]; then
+				local options_hdr
+				options_hdr="$(echo "${runtime_hdr}" | sed -E 's/\]$/.options]/')"
+				echo "" >> "${file}"
+				echo "${options_hdr}" >> "${file}"
+				echo "  BinaryName = \"${sysbox_runc_bin}\"" >> "${file}"
+				echo "  SystemdCgroup = ${sysbox_systemd_cgroup}" >> "${file}"
+			fi
+		fi
+
+		# Ensure BinaryName and SystemdCgroup are present & correct inside the sysbox-runc options table.
+		local tmp
+		tmp="$(mktemp)"
+		awk -v sysbox_bin="${sysbox_runc_bin}" -v systemd_cgroup="${sysbox_systemd_cgroup}" '
+			BEGIN { in_opts=0; saw_binary=0 }
+			/^\[.*containerd\.runtimes\.sysbox-runc\.options\]$/ {
+				in_opts=1; saw_binary=0; print; next
+			}
+			/^\[/ {
+				if (in_opts == 1 && saw_binary == 0) {
+					print "  BinaryName = \"" sysbox_bin "\""
+				}
+				in_opts=0
+				print
+				next
+			}
+			{
+				if (in_opts == 1) {
+					if ($0 ~ /^[[:space:]]*BinaryName[[:space:]]*=/) {
+						saw_binary=1
+						sub(/=.*/, "= \"" sysbox_bin "\"")
+						print
+						next
+					}
+					if ($0 ~ /^[[:space:]]*SystemdCgroup[[:space:]]*=/) {
+						sub(/=.*/, "= " systemd_cgroup)
+						print
+						next
+					}
+				}
+				print
+			}
+			END {
+				if (in_opts == 1 && saw_binary == 0) {
+					print "  BinaryName = \"" sysbox_bin "\""
+				}
+			}
+		' "${file}" > "${tmp}" && mv "${tmp}" "${file}"
+	}
+
 	if [ ! -f ${host_etc}/containerd/config.toml.bak ]; then
 		cp "${cfg_file}" ${host_etc}/containerd/config.toml.bak
 	fi
@@ -1167,8 +1224,8 @@ function configure_containerd() {
 		cat "${tmp_snip}" >> "${cfg_file}"
 		rm -f "${tmp_snip}"
 	else
-		echo "Sysbox-runc runtime handler already present in containerd config; skipping addition, here is the current config:"
-		cat "${cfg_file}"
+		echo "Sysbox-runc runtime handler already present in containerd config; ensuring it has correct options ..."
+		ensure_sysbox_runc_runtime_options "${cfg_file}"
 	fi
 }
 
