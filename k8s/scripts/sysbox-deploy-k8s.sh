@@ -1135,12 +1135,19 @@ function configure_containerd() {
 		die "missing containerd config snippet at ${cfg_snippet} (image packaging issue)"
 	fi
 
+	# Inherit SystemdCgroup setting from the existing runtime config if present.
+	# AKS containerd config typically sets it to true.
+	local sysbox_systemd_cgroup="false"
+	if grep -qE '^\s*SystemdCgroup\s*=\s*true\s*$' "${cfg_file}"; then
+		sysbox_systemd_cgroup="true"
+	fi
+
 	if [ ! -f ${host_etc}/containerd/config.toml.bak ]; then
 		cp "${cfg_file}" ${host_etc}/containerd/config.toml.bak
 	fi
 	if ! grep -q "sysbox-runc" "${cfg_file}"; then
 		echo "Adding sysbox-runc runtime handler to containerd config ..."
-		cat "${cfg_snippet}" >> "${cfg_file}"
+		sed -E "s/^(\s*SystemdCgroup\s*=\s*).*/\1${sysbox_systemd_cgroup}/" "${cfg_snippet}" >> "${cfg_file}"
 	else
 		echo "Sysbox-runc runtime handler already present in containerd config; skipping addition, here is the current config:"
 		cat "${cfg_file}"
