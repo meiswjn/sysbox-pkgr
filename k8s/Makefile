@@ -36,6 +36,19 @@ SYSBOX_CE_VER = $(shell cat ../sources/sysbox/VERSION)
 SYSBOX_CE_VER_SEMVER = $(shell echo $(SYSBOX_CE_VER) | cut -d"-" -f1)
 SYSBOX_CE_VER_FULL = $(shell echo $(SYSBOX_CE_VER) | sed '/-[0-9]/!s/.*/&-0/')
 
+# Optional fallback sysbox-ce version if the requested sysbox-ce .deb is not
+# available upstream (e.g., when building from an unreleased Sysbox version).
+#
+# When building sysbox-pkgr as part of the full sysbox repo, we try to infer a
+# reasonable fallback from the sysbox-install manifest image tag.
+SYSBOX_CE_VER_FALLBACK ?= $(shell \
+	if [ -f ../../sysbox-k8s-manifests/sysbox-install.yaml ]; then \
+		grep -E 'image:.*sysbox-deploy-k8s:v' ../../sysbox-k8s-manifests/sysbox-install.yaml | head -1 | sed -E 's/.*:v([^[:space:]]+).*/\1/'; \
+	fi)
+
+# Last-resort fallback if no manifest is present.
+SYSBOX_CE_VER_FALLBACK_DEFAULT ?= 0.6.7-0
+
 # CRIO versions to build.
 CRIO_VERSIONS = v1.29 v1.30 v1.31 v1.32 v1.33
 
@@ -73,15 +86,32 @@ endif
 
 fetch-sysbox-ce-bins:
 	@echo "Fetching Sysbox CE binaries ..."
-	$(eval TMPDIR := $(shell mktemp -d))
-	@echo "TMPDIR = $(TMPDIR)"
-	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_CE_VER_SEMVER)/sysbox-ce/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb -P $(TMPDIR)
-	mkdir -p $(TMPDIR)/sysbox-ce-generic
-	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
-	mkdir -p bin/sysbox-ce/generic
-	rm -rf bin/sysbox-ce/generic/*
-	cp $(TMPDIR)/sysbox-ce-generic/usr/bin/sysbox-* bin/sysbox-ce/generic/.
-	rm -rf $(TMPDIR)
+	@tmpdir="$$(mktemp -d)"; \
+	set -e; \
+	echo "TMPDIR = $$tmpdir"; \
+	primary_semver="$(SYSBOX_CE_VER_SEMVER)"; \
+	primary_full="$(SYSBOX_CE_VER_FULL)"; \
+	deb="sysbox-ce_$${primary_full}.linux_$(SYS_ARCH).deb"; \
+	url="https://storage.googleapis.com/sysbox-releases/v$${primary_semver}/sysbox-ce/$${deb}"; \
+	echo "Attempting download: $$url"; \
+	if ! wget -q "$$url" -P "$$tmpdir"; then \
+		fallback_ver="$(SYSBOX_CE_VER_FALLBACK)"; \
+		if [ -z "$$fallback_ver" ]; then fallback_ver="$(SYSBOX_CE_VER_FALLBACK_DEFAULT)"; fi; \
+		fallback_semver="$$(echo "$$fallback_ver" | cut -d"-" -f1)"; \
+		fallback_full="$$(echo "$$fallback_ver" | sed '/-[0-9]/!s/.*/&-0/')"; \
+		deb="sysbox-ce_$${fallback_full}.linux_$(SYS_ARCH).deb"; \
+		url="https://storage.googleapis.com/sysbox-releases/v$${fallback_semver}/sysbox-ce/$${deb}"; \
+		echo "Primary sysbox-ce .deb not found; falling back to $$fallback_ver"; \
+		echo "Attempting download: $$url"; \
+		wget -q "$$url" -P "$$tmpdir"; \
+		primary_full="$$fallback_full"; \
+	fi; \
+	mkdir -p "$$tmpdir/sysbox-ce-generic"; \
+	dpkg -x "$$tmpdir/sysbox-ce_$${primary_full}.linux_$(SYS_ARCH).deb" "$$tmpdir/sysbox-ce-generic"; \
+	mkdir -p bin/sysbox-ce/generic; \
+	rm -rf bin/sysbox-ce/generic/*; \
+	cp "$$tmpdir/sysbox-ce-generic/usr/bin/sysbox-"* bin/sysbox-ce/generic/.; \
+	rm -rf "$$tmpdir"
 	@echo "Before Overwrite"
 	sha1sum bin/sysbox-ce/generic/*
 	ls -alh bin/sysbox-ce/generic/
